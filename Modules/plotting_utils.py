@@ -1,5 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
+import matplotlib as mpl
+import matplotlib.widgets as widgets
 
 
 class PlottingFormat:
@@ -29,7 +31,7 @@ class PlottingFormat:
     # add legend formatting too
 
 
-def display_img(img, title = None):
+def display_img(img, title=None):
     format = PlottingFormat()
     fig = plt.figure()
     ax = fig.add_subplot(111)
@@ -37,7 +39,7 @@ def display_img(img, title = None):
     ax.set_title(title, **format.title_font)
 
     ax.set_axis_off()
-    im = ax.imshow(img, vmin = np.percentile(img, 1), vmax = np.percentile(img, 99))
+    im = ax.imshow(img, vmin=np.percentile(img, 1), vmax=np.percentile(img, 99))
 
     cbar = fig.colorbar(im)
     cbar.ax.tick_params(**format.colorbar_ticks)  #
@@ -45,17 +47,17 @@ def display_img(img, title = None):
     return fig
 
 
-def plot_data_2d(xdata, ydata, title = None, xlabel = None, ylabel = None):
+def plot_data_2d(xdata, ydata, title=None, xlabel=None, ylabel=None):
     format = PlottingFormat
     fig = plt.figure()
     ax = fig.add_subplot(111)
     plt.plot(xdata, ydata, **format.plot_2d_params)
 
     ax.set_title(title, **format.title_font)
-    ax.set_xlabel(xlabel, labelpad = format.axes_labelpad,**format.axes_label_font)
-    ax.set_ylabel(ylabel,labelpad = format.axes_labelpad, **format.axes_label_font)
-    ax.tick_params(axis = 'x', **format.x_axes_ticks)
-    ax.tick_params(axis = 'y', **format.y_axes_ticks)
+    ax.set_xlabel(xlabel, labelpad=format.axes_labelpad, **format.axes_label_font)
+    ax.set_ylabel(ylabel, labelpad=format.axes_labelpad, **format.axes_label_font)
+    ax.tick_params(axis='x', **format.x_axes_ticks)
+    ax.tick_params(axis='y', **format.y_axes_ticks)
     return fig
 
 
@@ -67,7 +69,7 @@ def line_profile():
     return
 
 
-class ImageSlideshow:
+class oldImageSlideshow:
 
     def __init__(self, axes_creators):
         # pass a list of functions into this constructor, each of these functions will take an input figure and
@@ -79,9 +81,12 @@ class ImageSlideshow:
         self.fig = plt.figure()
         self.axes_creators[0](self.fig)
         plt.show()
+        self.start_listening_press()
 
-        self.start_listening()
+        self.curr_roi = np.array([])
 
+    def get_current_img_axes(self):
+        return
     def append_axes(self, axes_creator):
         # add figure to the end of the rotation
         self.axes_creators.append(axes_creator)
@@ -121,7 +126,7 @@ class ImageSlideshow:
         self.curr_img = (self.curr_img - 1) % len(self.axes_creators)
         self.update_axes()
 
-    def start_listening(self):
+    def start_listening_press(self):
         self.fig.canvas.mpl_connect('key_press_event', self.on_press)
 
     def on_press(self, event):
@@ -129,3 +134,90 @@ class ImageSlideshow:
             self.goto_previous_axes()
         elif event.key == 'right':
             self.goto_next_axes()
+
+
+
+class ImageSlideshow:
+    def __init__(self,image_datalist):
+        self.img_list = image_datalist
+        self.curr_img = 0
+        self.curr_ax = None
+
+        plt.ion()
+        self.fig = plt.figure()
+        self.plot_curr_img()
+        plt.show()
+        self.start_listening_press()
+
+        self.curr_roi = np.array([])
+
+    def plot_curr_img(self):
+        curr_imgdatum = self.img_list[self.curr_img]
+
+        self.fig.clear()
+        ax = plt.axes()
+        self.fig.add_axes(ax)
+        # ax = fig.add_subplot(111)
+        # ax.set_axis_off()
+        ax.set_title(curr_imgdatum.filename)
+
+        if curr_imgdatum.ff_corrected:
+            try:
+                im = ax.imshow(curr_imgdatum.ff_corr_img, vmin=np.percentile(curr_imgdatum.ff_corr_img, 1), vmax=np.percentile(
+                    curr_imgdatum.ff_corr_img, 99))
+            except TypeError:
+                im = ax.imshow(curr_imgdatum.img)
+        else:
+            im = ax.imshow(curr_imgdatum.img, vmin=np.percentile(curr_imgdatum.img, 1), vmax=np.percentile(curr_imgdatum.img, 99))
+        self.fig.colorbar(im)
+        plt.draw()
+        self.curr_ax = ax
+    def roi_selector(self):
+
+        rs = widgets.RectangleSelector(self.curr_ax, self.onclick, drawtype='box',
+                                       rectprops=dict(facecolor='red', edgecolor='black', alpha=0.5, fill=True),
+                                       interactive=True)
+
+        return rs
+
+    def onclick(self,click,release):
+        x0 = int(click.xdata)
+        x1 = int(release.xdata)
+        y0 = int(click.ydata)
+        y1 = int(release.ydata)
+
+        curr_imgdatum = self.img_list[self.curr_img]
+
+        if curr_imgdatum.ff_corrected:
+            self.curr_roi = curr_imgdatum.ff_corr_img[y0:y1,x0:x1]
+        else:
+            self.curr_roi = curr_imgdatum.img[y0:y1,x0:x1]
+
+    def goto_next_img(self):
+
+        self.curr_img = (self.curr_img + 1) % len(self.img_list)
+        self.plot_curr_img()
+
+    def goto_previous_img(self):
+
+        self.curr_img = (self.curr_img - 1) % len(self.img_list)
+        self.plot_curr_img()
+
+    def start_listening_press(self):
+        self.fig.canvas.mpl_connect('key_press_event', self.on_press)
+
+    def on_press(self, event):
+        if event.key == 'left':
+            self.goto_previous_img()
+        elif event.key == 'right':
+            self.goto_next_img()
+
+
+def get_img_from_axes(axes):
+
+    children = axes.get_children()
+    img_axes = [img_ax for img_ax in children if isinstance(img_ax,mpl.image.AxesImage)]
+    if len(img_axes) == 1:
+        return img_axes[0].get_array()
+    else:
+        raise Exception('More than one AxesImage in the axes, unsure which to retrieve.')

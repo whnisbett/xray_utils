@@ -4,6 +4,8 @@ import csv
 import cv2 as cv
 from plotting_utils import ImageSlideshow
 import imageproc_utils as ipu
+import matplotlib
+from matplotlib import pyplot as plt
 
 
 class ImgDatum:
@@ -12,6 +14,7 @@ class ImgDatum:
         self.filename = filename
         self.ff_filename = None
         self.ff_corr_img = None
+        self.ff_corrected = False
 
     def get_filename(self):
         return self.filename
@@ -22,19 +25,21 @@ class ImgDatum:
     def get_ff_corr_img(self):
         return self.ff_corr_img
 
-    def axes_creator(self, fig, ff_corrected = True):
-        ax = fig.add_subplot(111)
-        #ax.set_axis_off()
+    def axes_creator(self, fig, ff_corrected=True):
+        ax = plt.axes()
+        fig.add_axes(ax)
+        # ax = fig.add_subplot(111)
+        # ax.set_axis_off()
         ax.set_title(self.filename)
 
         if ff_corrected:
             try:
-                im = ax.imshow(self.ff_corr_img, vmin = np.percentile(self.ff_corr_img, 1), vmax = np.percentile(
+                im = ax.imshow(self.ff_corr_img, vmin=np.percentile(self.ff_corr_img, 1), vmax=np.percentile(
                     self.ff_corr_img, 99))
             except TypeError:
                 im = ax.imshow(self.img)
         else:
-            im = ax.imshow(self.img, vmin = np.percentile(self.img, 1), vmax = np.percentile(self.img, 99))
+            im = ax.imshow(self.img, vmin=np.percentile(self.img, 1), vmax=np.percentile(self.img, 99))
         fig.colorbar(im)
         # replace this with a more robust plotting routine in the future that will allow me
         #  to window the image (like my threshHist class)
@@ -42,10 +47,11 @@ class ImgDatum:
     def ff_correct(self, ff_datum):
         self.ff_corr_img = ipu.ff_correct(self.img, ff_datum.img)
         self.filename = ff_datum.filename
+        self.ff_corrected = True
 
 
 class SpectralImgDatum(ImgDatum):  # need to modify ImgDataLoader to make it data type agnostic
-    def __init__(self, img, filename, threshold, frame = -1):  # or should frame = -1?
+    def __init__(self, img, filename, threshold, frame=-1):  # or should frame = -1?
         super().__init__(img, filename)
         self.threshold = threshold
         self.frame = frame  # -1 will indicate that it is integral data
@@ -83,7 +89,7 @@ class SpectralFrameList:  # this is a list of spectral
     def append_frame(self, frame_datum):
         self.frames_list.append(frame_datum)
 
-    def convert_to_integral(self, frame_range = None):
+    def convert_to_integral(self, frame_range=None):
 
         if frame_range is None:
             start = 0
@@ -111,7 +117,7 @@ class SpectralFrameList:  # this is a list of spectral
         for frame in self:
             frame_sum += frame
 
-        spectral_integral_datum = SpectralImgDatum(frame_sum, integral_filename, self.threshold, frame = -1)
+        spectral_integral_datum = SpectralImgDatum(frame_sum, integral_filename, self.threshold, frame=-1)
         return spectral_integral_datum
 
         # create a spectralimgdatum from this
@@ -164,15 +170,16 @@ def get_frame_from_filename(filename):
         print('Error: ' + filename + ' appears to be integral data. Use SpectralIntegralLoader instead.')
     return frame
 
+
 def open_img(filename):
-    _, file_ext = os.path.splitext(filename)
+    file, file_ext = os.path.splitext(filename)
     # add data to img list
 
     if file_ext in ['.txt', '.csv']:
-        img = np.loadtxt(filename, delimiter = get_file_delimiter(filename))
+        img = np.loadtxt(filename, delimiter=get_file_delimiter(filename))
 
     elif file_ext == '.img':
-        img = np.fromfile(filename, dtype = 'f')
+        img = np.fromfile(filename, dtype='f')
         img = np.transpose(img.reshape(240, 760))
 
     elif file_ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tif']:
@@ -183,7 +190,9 @@ def open_img(filename):
         img = None
 
     return img
-def import_data(directory = os.getcwd(), data_type = 'integral'):
+
+
+def import_data(directory=os.getcwd(), data_type='integral'):
     data = []
     file_list = os.listdir(directory)
     file_list.sort()
@@ -194,11 +203,11 @@ def import_data(directory = os.getcwd(), data_type = 'integral'):
         file_path = directory + '/' + file
 
         if file_ext in ['.txt', '.csv']:
-            img = np.loadtxt(file_path, delimiter = get_file_delimiter(file_path))
+            img = np.loadtxt(file_path, delimiter=get_file_delimiter(file_path))
 
         elif file_ext == '.img':
-            img = np.fromfile(file_path,dtype = 'f')
-            img = np.transpose(img.reshape(240,760))
+            img = np.fromfile(file_path, dtype='f')
+            img = np.transpose(img.reshape(240, 760))
 
         elif file_ext == '.hdf':
             print(file + ' is in hdf5 format. File will be skipped.')
@@ -261,7 +270,7 @@ class DataList:
         else:
             raise StopIteration
 
-    def insert_datum(self, img_datum, position = None):
+    def insert_datum(self, img_datum, position=None):
         if position == None:
             self.data.append(img_datum)
         else:
@@ -305,7 +314,7 @@ class DataList:
             filenames.append(datum.filename)
         return filenames
 
-    def ff_corr(self, ff_datalist, img_ff_mapping = None):
+    def ff_corr(self, ff_datalist, img_ff_mapping=None):
         # img_ff_mapping is a mapping of which data corresponds to which flatfield
         if img_ff_mapping == None:
             if len(ff_datalist) == len(self):
@@ -320,7 +329,7 @@ class DataList:
 
 
 class DataLoader_old:
-    def __init__(self, dir = os.getcwd()):
+    def __init__(self, dir=os.getcwd()):
         # if the number of images is less than 20 (i.e. small), store as a list of images
         self.dir = dir
         self.data = []
@@ -366,7 +375,7 @@ class DataLoader_old:
             file_path = self.dir + '/' + file
 
             if file_ext in ['.txt', '.csv']:
-                img = np.loadtxt(file_path, delimiter = self.get_file_delimiter(file_path))
+                img = np.loadtxt(file_path, delimiter=self.get_file_delimiter(file_path))
 
             elif file_ext == '.hdf':
                 print(file + ' is in hdf5 format. File will be skipped.')
@@ -634,7 +643,6 @@ class Experiment:
 
         self.get_k_vector()
 
-
     def include_data(self, data):
         self.data = data
 
@@ -642,15 +650,15 @@ class Experiment:
         self.data = data
 
     def get_k_vector(self):
-        k_max = 2*np.pi/self.detector.pixel_size
-        k_nyq = k_max/2.
+        k_max = 2 * np.pi / self.detector.pixel_size
+        k_nyq = k_max / 2.
         dkx = k_max / self.detector.resolution[0]
         dky = k_max / self.detector.resolution[1]
 
-        k_x = np.linspace(-k_nyq + dkx,k_nyq,self.detector.resolution[0], endpoint = True)#/self.magnification
-        k_y = np.linspace(-k_nyq + dky, k_nyq, self.detector.resolution[1], endpoint = True)#/self.magnification
-        self.k_space = [k_x,k_y]
-        self.k_2 = np.add.outer(k_x**2,k_y**2)
+        k_x = np.linspace(-k_nyq + dkx, k_nyq, self.detector.resolution[0], endpoint=True)  # /self.magnification
+        k_y = np.linspace(-k_nyq + dky, k_nyq, self.detector.resolution[1], endpoint=True)  # /self.magnification
+        self.k_space = [k_x, k_y]
+        self.k_2 = np.add.outer(k_x ** 2, k_y ** 2)
 
 
 class PhaseContrastExperiment(Experiment):
@@ -665,7 +673,7 @@ class DualEnergyExperiment(Experiment):
 
 
 class Detector:
-    def __init__(self, name, pixel_size, resolution, bias = -500):
+    def __init__(self, name, pixel_size, resolution, bias=-500):
         self.name = name
         self.pixel_size = pixel_size
         self.resolution = resolution
@@ -677,6 +685,6 @@ class Detector:
 
 
 class PhotonCountingDetector(Detector):
-    def __init__(self, name, pixel_size, resolution, mode, bias = -500):
+    def __init__(self, name, pixel_size, resolution, mode, bias=-500):
         super().__init__(name, pixel_size, resolution, bias)
         self.mode = mode  # single pixel or csm

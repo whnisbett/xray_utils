@@ -10,7 +10,7 @@ class threshHist:
     # thresh_low/thresh_high - the low and high thresholds
     # mask - the mask basked on the thresholds
     # masked_img - the masked_array of the image
-    def __init__(self, img, mode = '', cmap = 'viridis'):
+    def __init__(self, img, mode='', cmap='viridis'):
         # CREATE FIGURE AND PLOT HISTOGRAM
         plt.ion()
 
@@ -20,10 +20,10 @@ class threshHist:
         r, c = self.img.shape
         self.is_pressed = False
 
-        self.img[np.isnan(self.img)] = 0. # replace nan with 0
+        self.img[np.isnan(self.img)] = 0.  # replace nan with 0
         # replace outliers with 0???
         img1d = np.reshape(self.img, r * c)
-        self.outlier_free_data = img1d #su.filter_outliers(img1d)
+        self.outlier_free_data = img1d  # su.filter_outliers(img1d)
         # set initial threshold
         self.thresh_low, self.thresh_high = (np.percentile(self.outlier_free_data, 1),
                                              np.percentile(self.outlier_free_data, 99))
@@ -32,7 +32,7 @@ class threshHist:
         plt.show()
         self.hist_ax = self.hist_fig.add_axes([0.1, 0.1, 0.8, 0.8])
         # self.img_hist = self.hist_ax.hist(self.img1d, bins = 256)
-        self.img_hist = self.hist_ax.hist(self.outlier_free_data, bins = 256)
+        self.img_hist = self.hist_ax.hist(self.outlier_free_data, bins=256)
 
         # DRAW LINES AND MAKE THEM PICKABLE
         ymin, ymax = self.hist_ax.get_ylim()
@@ -45,8 +45,8 @@ class threshHist:
         self.img_fig = plt.figure(2)
         plt.show()
         self.img_ax = self.img_fig.add_axes([0.1, 0.1, 0.8, 0.8])
-        self.img_obj = self.img_ax.imshow(self.img, cmap = self.color_map, vmin = self.thresh_low,
-                                          vmax = self.thresh_high)
+        self.img_obj = self.img_ax.imshow(self.img, cmap=self.color_map, vmin=self.thresh_low,
+                                          vmax=self.thresh_high)
 
         # BEGIN LISTENING FOR EVENTS
         self.connect()
@@ -58,7 +58,7 @@ class threshHist:
         # REDRAW FIGURE
         self.hist_fig = plt.figure(1)
         self.hist_ax = self.hist_fig.add_axes([0.1, 0.1, 0.8, 0.8])
-        self.img_hist = self.hist_ax.hist(self.outlier_free_data, bins = 'auto')
+        self.img_hist = self.hist_ax.hist(self.outlier_free_data, bins='auto')
 
         # REDRAW LINES AND MAKE THEM PICKABLE
         ymin, ymax = self.hist_ax.get_ylim()
@@ -72,8 +72,8 @@ class threshHist:
 
         self.img_fig = plt.figure(2)
         self.img_ax = self.img_fig.add_axes([0.1, 0.1, 0.8, 0.8])
-        self.img_obj = self.img_ax.imshow(self.img, cmap = self.color_map, vmin = self.thresh_low,
-                                          vmax = self.thresh_high)
+        self.img_obj = self.img_ax.imshow(self.img, cmap=self.color_map, vmin=self.thresh_low,
+                                          vmax=self.thresh_high)
 
         # BEGIN LISTENING FOR EVENTS
         self.connect()
@@ -133,16 +133,16 @@ class threshHist:
 
                 self.img_obj.remove()
                 if self.mode != 'mask':
-                    self.img_obj = self.img_ax.imshow(self.img, cmap = self.color_map, vmin = self.thresh_low,
-                                                      vmax = self.thresh_high)
+                    self.img_obj = self.img_ax.imshow(self.img, cmap=self.color_map, vmin=self.thresh_low,
+                                                      vmax=self.thresh_high)
                 else:
                     mask_low = self.img < self.thresh_low
                     mask_high = self.img > self.thresh_high
                     self.mask = np.array(mask_low) != np.array(mask_high)
                     self.masked_img = np.ma.masked_array(self.img, self.mask)
                     self.masked_img.set_fill_value(0)
-                    self.img_obj = self.img_ax.imshow(self.masked_img, cmap = self.color_map, vmin = self.thresh_low,
-                                                      vmax = self.thresh_high)
+                    self.img_obj = self.img_ax.imshow(self.masked_img, cmap=self.color_map, vmin=self.thresh_low,
+                                                      vmax=self.thresh_high)
 
     def on_release(self, event):
         # ON RELEASE CHANGE LINE BACK TO BLACK, CHANGE PRESS STATE, UPDATE THRESHOLDS AND LINE ID'S
@@ -158,12 +158,12 @@ def ff_correct(img, ff_img):
     # img_hist = thresholdingHistogram(img,mode = 'mask')
     # wait = raw_input('PRESS ENTER TO CONTINUE')
     # plt.close('all')
-    #ff_mask = ff_hist.mask
+    # ff_mask = ff_hist.mask
     # img_mask = img_hist.mask
     # SHOULD WE ENSURE THAT THE SAME PIXELS ARE MASKED?
 
-    r,c = ff_img.shape
-    ff_1d = np.reshape(ff_img,r*c)
+    r, c = ff_img.shape
+    ff_1d = np.reshape(ff_img, r * c)
     ff_1d_no_outliers = su.filter_outliers(ff_1d)
     high_threshold = np.max(ff_1d_no_outliers)
     low_threshold = np.min(ff_1d_no_outliers)
@@ -171,9 +171,8 @@ def ff_correct(img, ff_img):
     high_mask = ff_img > high_threshold
     low_mask = ff_img < low_threshold
     zero_mask = ff_img < 5.0
-    ff_mask = np.logical_or(high_mask,low_mask)
-    ff_mask = np.logical_or(ff_mask,zero_mask)
-
+    ff_mask = np.logical_or(high_mask, low_mask)
+    ff_mask = np.logical_or(ff_mask, zero_mask)
 
     ff_interp = correctBadPixels(ff_img, ff_mask)
     img_interp = correctBadPixels(img, ff_mask)
@@ -186,7 +185,7 @@ def ff_correct(img, ff_img):
     return img_ffcorr
 
 
-def correctBadPixels(img, mask): # runs prior to flatfield correction and interpolates all of the data
+def correctBadPixels(img, mask):  # runs prior to flatfield correction and interpolates all of the data
     # img_hist = thresholdingHistogram(img,mode = 'mask')
     # img_mask = img_hist.mask
     img_mask = mask
@@ -198,18 +197,19 @@ def correctBadPixels(img, mask): # runs prior to flatfield correction and interp
     values = img[mask_inv]
     values = values.T
 
-    grid = griddata(points, values, (x_mesh, y_mesh), method = 'linear')
+    grid = griddata(points, values, (x_mesh, y_mesh), method='linear')
     # plt.imshow(grid,cmap = 'viridis',vmin = np.percentile(grid,1),vmax = np.percentile(grid,99))
     return grid
     # plt.imshow(grid,cmap = 'magma',vmin = np.percentile(grid,5),vmax = np.percentile(grid,95))
 
-def select_roi(img,ul_coordinates):
+
+def select_roi(img, ul_coordinates):
     # ul_coordinates are the upper left coordinates and dimensions of the roi in the form
     # [r,c,vertical_width,horizontal_width]
     r_start = ul_coordinates[0]
     c_start = ul_coordinates[1]
     v_span = ul_coordinates[2]
     h_span = ul_coordinates[3]
-    roi = img[r_start:r_start+v_span,c_start:c_start+h_span]
+    roi = img[r_start:r_start + v_span, c_start:c_start + h_span]
 
     return roi
