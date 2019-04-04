@@ -1,6 +1,5 @@
 from matplotlib import pyplot as plt
 import numpy as np
-import matplotlib as mpl
 import matplotlib.widgets as widgets
 
 
@@ -32,32 +31,32 @@ class PlottingFormat:
 
 
 def display_img(img, title=None):
-    format = PlottingFormat()
+    pformat = PlottingFormat()
     fig = plt.figure()
     ax = fig.add_subplot(111)
 
-    ax.set_title(title, **format.title_font)
+    ax.set_title(title, **pformat.title_font)
 
     ax.set_axis_off()
     im = ax.imshow(img, vmin=np.percentile(img, 1), vmax=np.percentile(img, 99))
 
     cbar = fig.colorbar(im)
-    cbar.ax.tick_params(**format.colorbar_ticks)  #
+    cbar.ax.tick_params(**pformat.colorbar_ticks)  #
 
     return fig
 
 
 def plot_data_2d(xdata, ydata, title=None, xlabel=None, ylabel=None):
-    format = PlottingFormat
+    pformat = PlottingFormat
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    plt.plot(xdata, ydata, **format.plot_2d_params)
+    plt.plot(xdata, ydata, **pformat.plot_2d_params)
 
-    ax.set_title(title, **format.title_font)
-    ax.set_xlabel(xlabel, labelpad=format.axes_labelpad, **format.axes_label_font)
-    ax.set_ylabel(ylabel, labelpad=format.axes_labelpad, **format.axes_label_font)
-    ax.tick_params(axis='x', **format.x_axes_ticks)
-    ax.tick_params(axis='y', **format.y_axes_ticks)
+    ax.set_title(title, **pformat.title_font)
+    ax.set_xlabel(xlabel, labelpad=pformat.axes_labelpad, **pformat.axes_label_font)
+    ax.set_ylabel(ylabel, labelpad=pformat.axes_labelpad, **pformat.axes_label_font)
+    ax.tick_params(axis='x', **pformat.x_axes_ticks)
+    ax.tick_params(axis='y', **pformat.y_axes_ticks)
     return fig
 
 
@@ -69,7 +68,7 @@ def line_profile():
     return
 
 
-class oldImageSlideshow:
+class OldImageSlideshow:
 
     def __init__(self, axes_creators):
         # pass a list of functions into this constructor, each of these functions will take an input figure and
@@ -87,6 +86,7 @@ class oldImageSlideshow:
 
     def get_current_img_axes(self):
         return
+
     def append_axes(self, axes_creator):
         # add figure to the end of the rotation
         self.axes_creators.append(axes_creator)
@@ -102,7 +102,7 @@ class oldImageSlideshow:
             else:
                 print('Index out of range, please select a number between 0 and ' + str(len(self.axes_creators) - 1))
         except:
-            print('Error: Cannot remove since only 1 image remains')
+            raise Exception('Cannot remove since only 1 image remains')
 
     def goto_axes(self, ind):
         # go to specific figure in the rotation
@@ -136,20 +136,26 @@ class oldImageSlideshow:
             self.goto_next_axes()
 
 
-
 class ImageSlideshow:
-    def __init__(self,image_datalist):
+    def __init__(self, image_datalist):
         self.img_list = image_datalist
         self.curr_img = 0
         self.curr_ax = None
 
         plt.ion()
+        self.showplot()
+
+        self.curr_roi = np.array([])
+        self.roi_list = []
+
+    def showplot(self):
         self.fig = plt.figure()
         self.plot_curr_img()
         plt.show()
         self.start_listening_press()
 
-        self.curr_roi = np.array([])
+    def clear_roi_list(self):
+        self.roi_list = []
 
     def plot_curr_img(self):
         curr_imgdatum = self.img_list[self.curr_img]
@@ -163,15 +169,18 @@ class ImageSlideshow:
 
         if curr_imgdatum.ff_corrected:
             try:
-                im = ax.imshow(curr_imgdatum.ff_corr_img, vmin=np.percentile(curr_imgdatum.ff_corr_img, 1), vmax=np.percentile(
-                    curr_imgdatum.ff_corr_img, 99))
+                im = ax.imshow(curr_imgdatum.ff_corr_img, vmin=np.percentile(curr_imgdatum.ff_corr_img, 1),
+                               vmax=np.percentile(
+                                   curr_imgdatum.ff_corr_img, 99))
             except TypeError:
                 im = ax.imshow(curr_imgdatum.img)
         else:
-            im = ax.imshow(curr_imgdatum.img, vmin=np.percentile(curr_imgdatum.img, 1), vmax=np.percentile(curr_imgdatum.img, 99))
+            im = ax.imshow(curr_imgdatum.img, vmin=np.percentile(curr_imgdatum.img, 1),
+                           vmax=np.percentile(curr_imgdatum.img, 99))
         self.fig.colorbar(im)
         plt.draw()
         self.curr_ax = ax
+
     def roi_selector(self):
 
         rs = widgets.RectangleSelector(self.curr_ax, self.onclick, drawtype='box',
@@ -180,7 +189,10 @@ class ImageSlideshow:
 
         return rs
 
-    def onclick(self,click,release):
+    def remove_last_roi(self):
+        self.roi_list = self.roi_list[:-1]
+
+    def onclick(self, click, release):
         x0 = int(click.xdata)
         x1 = int(release.xdata)
         y0 = int(click.ydata)
@@ -189,9 +201,10 @@ class ImageSlideshow:
         curr_imgdatum = self.img_list[self.curr_img]
 
         if curr_imgdatum.ff_corrected:
-            self.curr_roi = curr_imgdatum.ff_corr_img[y0:y1,x0:x1]
+            self.curr_roi = curr_imgdatum.ff_corr_img[y0:y1, x0:x1]
         else:
-            self.curr_roi = curr_imgdatum.img[y0:y1,x0:x1]
+            self.curr_roi = curr_imgdatum.img[y0:y1, x0:x1]
+        self.roi_list.append(self.curr_roi)
 
     def goto_next_img(self):
 
@@ -211,13 +224,3 @@ class ImageSlideshow:
             self.goto_previous_img()
         elif event.key == 'right':
             self.goto_next_img()
-
-
-def get_img_from_axes(axes):
-
-    children = axes.get_children()
-    img_axes = [img_ax for img_ax in children if isinstance(img_ax,mpl.image.AxesImage)]
-    if len(img_axes) == 1:
-        return img_axes[0].get_array()
-    else:
-        raise Exception('More than one AxesImage in the axes, unsure which to retrieve.')

@@ -40,7 +40,7 @@ def analyze_texture(dir, roi_coord):
 
 
 class TextureDatum:
-    def __init__(self, img, roi_coord, filename=None, n_grey=256, quant_method='uniform'):
+    def __init__(self, rois, img=None, roi_coord=None, filename=None, n_grey=256, quant_method='uniform'):
         self.img = img
         self.n_grey = n_grey
         self.quant_method = quant_method
@@ -49,19 +49,24 @@ class TextureDatum:
         self.base_group_path = None  # IMPLEMENT A FUNCTION TO GET THE CORRECT GROUP PATH FOR THE DATA FROM THE PARAMETER
         # GROUPS
 
-        self.quantized_img = self.quantize_img(
-            quantization_range=[np.percentile(self.img, 3), np.percentile(self.img, 97)], n_grey=self.n_grey,
-            method=self.quant_method)
-        self.rois = [ipu.select_roi(self.quantized_img, coord) for coord in roi_coord]
+        # self.quantized_img = self.quantize_img(
+        #    quantization_range=[np.percentile(self.img, 3), np.percentile(self.img, 97)], n_grey=self.n_grey,
+        #    method=self.quant_method)
+        # self.rois = [ipu.select_roi(self.quantized_img, coord) for coord in roi_coord]
+        self.rois = [self.img]
+        self.rois = [
+            self.quantize_img(roi, quantization_range=[np.percentile(roi, 3), np.percentile(roi, 97)],
+                              n_grey=self.n_grey, method=self.quant_method) for roi in self.rois]
         self.glcms = [GLCM(roi, self.n_grey, d=1, angle=45) for roi in self.rois]
-        # self.ngtdm = NGTDM(self.img, n = 1)
+        self.ngtdms = [NGTDM(roi, n_grey=256, d=1) for roi in self.rois]
         # self.rlm = RLM(self.img, angle = 45)
 
-    def quantize_img(self, quantization_range, n_grey=256, method='uniform'):
+    def quantize_img(self, img, quantization_range, n_grey=256, method='uniform'):
         if method == 'uniform':
             quant_min = quantization_range[0]
             quant_max = quantization_range[1]
-            relative_bins = (self.img - quant_min) / (quant_max - quant_min)
+            # relative_bins = (self.img - quant_min) / (quant_max - quant_min)
+            relative_bins = (img - quant_min) / (quant_max - quant_min)
             print(quant_min)
             print(quant_max)
             print(relative_bins)
@@ -76,6 +81,7 @@ class TextureDatum:
             print(quantized_img)
             quantized_img = np.ma.filled(quantized_img, fill_value=n_grey - 1)
             print(quantized_img)
+
             return quantized_img.astype(np.int)
 
 
@@ -214,7 +220,7 @@ class NGTDM:
         self.p_i = self.get_probability_vector()
         self.features = {'busyness': self.busyness(), 'complexity': self.complexity(), 'coarseness': self.coarseness(
 
-        ), 'contrast': self.contrast}
+        ), 'contrast': self.contrast()}
 
     def get_probability_vector(self):
         p_i = np.zeros(self.n_grey)

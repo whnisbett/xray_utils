@@ -11,7 +11,9 @@ from matplotlib import pyplot as plt
 class ImgDatum:
     def __init__(self, img, filename):
         self.img = img
+        self.raw_img = img
         self.filename = filename
+
         self.ff_filename = None
         self.ff_corr_img = None
         self.ff_corrected = False
@@ -45,10 +47,12 @@ class ImgDatum:
         #  to window the image (like my threshHist class)
 
     def ff_correct(self, ff_datum):
+
         self.ff_corr_img = ipu.ff_correct(self.img, ff_datum.img)
-        self.filename = ff_datum.filename
+        self.ff_filename = ff_datum.filename
         self.ff_corrected = True
 
+        self.img = self.ff_corr_img
 
 class SpectralImgDatum(ImgDatum):  # need to modify ImgDataLoader to make it data type agnostic
     def __init__(self, img, filename, threshold, frame=-1):  # or should frame = -1?
@@ -175,7 +179,7 @@ def open_img(filename):
     file, file_ext = os.path.splitext(filename)
     # add data to img list
 
-    if file_ext in ['.txt', '.csv']:
+    if file_ext in ['.txt', '.csv','.pmf']:
         img = np.loadtxt(filename, delimiter=get_file_delimiter(filename))
 
     elif file_ext == '.img':
@@ -202,7 +206,7 @@ def import_data(directory=os.getcwd(), data_type='integral'):
         # add data to img list
         file_path = directory + '/' + file
 
-        if file_ext in ['.txt', '.csv']:
+        if file_ext in ['.txt', '.csv','.pmf']:
             img = np.loadtxt(file_path, delimiter=get_file_delimiter(file_path))
 
         elif file_ext == '.img':
@@ -324,7 +328,7 @@ class DataList:
                 raise ValueError(
                     'Too few or too many flatfields provided. Please provide one for each datum or provide a image-flat-field mapping.')
         else:
-            for i, datum in enumerate(self):
+            for i, datum in enumerate(self): # i-th data corresponds to img_ff_mapping[i]-th flatfield
                 datum.ff_correct(ff_datalist[img_ff_mapping[i]])
 
 
