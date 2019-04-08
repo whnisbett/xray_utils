@@ -1,12 +1,9 @@
-import numpy as np
-import imageproc_utils as ipu
-import data_utils as du
-import h5py
-import glob
 import os
+
+import numpy as np
+
+import data_utils as du
 from texture import hdf5_utils as hu
-from fuzzywuzzy import process
-import copy
 
 
 # def add_datum(datafile,texture_datum): have this function in an "modify_texturedata module/class". That class will be
@@ -41,81 +38,57 @@ def analyze_texture(dir, roi_coord):
 
 class TextureDatum:
     def __init__(self, rois, img=None, roi_coord=None, filename=None, n_grey=256, quant_method='uniform'):
+        # initialize variables
         self.img = img
         self.n_grey = n_grey
         self.quant_method = quant_method
         self.filename = filename
+        self.rois = rois
         self.parameter_groups = None  # IMPLEMENT A FUNCTION TO GET THE PARAMETER GROUPS FROM THE FILENAME
         self.base_group_path = None  # IMPLEMENT A FUNCTION TO GET THE CORRECT GROUP PATH FOR THE DATA FROM THE PARAMETER
         # GROUPS
 
-        # self.quantized_img = self.quantize_img(
-        #    quantization_range=[np.percentile(self.img, 3), np.percentile(self.img, 97)], n_grey=self.n_grey,
-        #    method=self.quant_method)
-        # self.rois = [ipu.select_roi(self.quantized_img, coord) for coord in roi_coord]
-        self.rois = [self.img]
-        self.rois = [
-            self.quantize_img(roi, quantization_range=[np.percentile(roi, 3), np.percentile(roi, 97)],
+        # quantize the rois
+        self.quant_rois = [
+            ipu.quantize_img(roi, quantization_range=[np.percentile(roi, 1), np.percentile(roi, 99)],
                               n_grey=self.n_grey, method=self.quant_method) for roi in self.rois]
-        self.glcms = [GLCM(roi, self.n_grey, d=1, angle=45) for roi in self.rois]
-        self.ngtdms = [NGTDM(roi, n_grey=256, d=1) for roi in self.rois]
+        # compute texture matrices and features for each roi
+        self.glcms = [GLCM(roi, self.n_grey, d=1, angle=45) for roi in self.quant_rois]
+        self.ngtdms = [NGTDM(roi, n_grey=256, d=1) for roi in self.quant_rois]
         # self.rlm = RLM(self.img, angle = 45)
 
-    def quantize_img(self, img, quantization_range, n_grey=256, method='uniform'):
-        if method == 'uniform':
-            quant_min = quantization_range[0]
-            quant_max = quantization_range[1]
-            # relative_bins = (self.img - quant_min) / (quant_max - quant_min)
-            relative_bins = (img - quant_min) / (quant_max - quant_min)
-            print(quant_min)
-            print(quant_max)
-            print(relative_bins)
-            # FIND ALL VALUES THAT ARE LESS THAN THE MIN THRESHOLD
-            nonzero_values = relative_bins >= 0
-            nonzero_values = nonzero_values.astype(np.int)
-            print(nonzero_values)
-            nonzero_img = np.floor(relative_bins * nonzero_values * (n_grey - 2))
-            print(nonzero_img)
-            max_values = nonzero_img >= (n_grey - 2)
-            quantized_img = np.ma.array(nonzero_img, mask=max_values)
-            print(quantized_img)
-            quantized_img = np.ma.filled(quantized_img, fill_value=n_grey - 1)
-            print(quantized_img)
-
-            return quantized_img.astype(np.int)
 
 
 class GLCM:
     def __init__(self, img, n_grey, d, angle):
+        # initialize variables
         self.DEG2RAD = np.pi / 180
         self.img = img
         self.n_grey = n_grey
         self.d = d
         self.angle = angle
 
-        i_array = np.linspace(0, self.n_grey - 1, num=self.n_grey)
-        j_array = i_array
-        j_grid, i_grid = np.meshgrid(i_array, j_array)
-
+        # compute GLCM for the image
         self.glcm = self.get_glcm(self.img, self.n_grey, self.d, self.angle)
 
+        # create two grey level vectors i and j with length n_grey (e.g. 256)
+        i_array = np.linspace(0, self.n_grey - 1, num=self.n_grey)
+        j_array = i_array
+
+        # calculate normalized probabilities, means, and standard deviations for focus and comparison pixel gray levels
         self.p_x = np.sum(self.glcm, axis=1)  # PROBABILITY OF GREY LEVEL I BEING FOCUS PIXEL
         self.p_y = np.sum(self.glcm, axis=0)  # PROBABILITY OF GREY LEVEL J BEING THE COMPARISON PIXEL
         self.mean_i = np.sum(i_array * self.p_x)  # MEAN FOCUS PIXEL GREY LEVEL
         self.mean_j = np.sum(j_array * self.p_y)  # MEAN COMPARISON PIXEL GREY LEVEL
-        self.std_i = np.sqrt(
-            np.sum((i_array - self.mean_i) ** 2 * self.p_x))  # STANDARD DEVIATION OF FOCUS PIXEL GREY LEVEL
-        # PROBABILITY
-        # DISTRIBUTION
-        self.std_j = np.sqrt(
-            np.sum((j_array - self.mean_j) ** 2 * self.p_y))  # STANDARD DEVIATION OF COMPARISON PIXEL GREY
-        # LEVEL
-        # PROBABILITY
-        # DISTRIBUTION
-
+        self.std_i = np.sqrt(np.sum(
+            (i_array - self.mean_i) ** 2 * self.p_x)
+        )  # STANDARD DEVIATION OF FOCUS PIXEL GREY LEVEL PROBABILITY DISTRIBUTION
+        self.std_j = np.sqrt(np.sum(
+            (j_array - self.mean_j) ** 2 * self.p_y)
+        )  # STANDARD DEVIATION OF COMPARISON PIXEL GREY LEVEL PROBABILITY DISTRIBUTION
+        # compute all GLCM features
         self.features = {'entropy': self.entropy(), 'energy': self.energy(), 'inverse difference moment':
-            self.inverse_difference_moment(), 'correlation': self.correlation()}  #
-        ...
+            self.inverse_difference_moment(), 'correlation': self.correlation()}
 
     def get_glcm(self, img, n_grey, d, angle):
         # INITIALIZE GLCM AND GET COMPARISON VECTOR
@@ -203,7 +176,6 @@ class GLCM:
         energy = np.sum(self.glcm * self.glcm)
 
         return energy
-    # ...
 
 
 class NGTDM:

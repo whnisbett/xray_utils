@@ -2,8 +2,8 @@ import matplotlib as mpl
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.interpolate import griddata
-from multiprocessing import pool
 
+import global_variables
 import stat_utils as su
 
 
@@ -26,11 +26,11 @@ class ThresholdHistogram:
         # get rid of outliers **** and determine starting threshold for image viewing/histogram
         self.hist_data = img1d
 
-        self.thresh_low, self.thresh_high = (np.percentile(self.hist_data, 1),
-                                             np.percentile(self.hist_data, 99))
+        self.thresh_low, self.thresh_high = (np.percentile(su.filter_outliers(self.hist_data), 0.5),
+                                             np.percentile(su.filter_outliers(self.hist_data), 99.5))
 
         # make plot interactive
-        plt.ion()
+        plt.ioff()
         # create figures and axes subplots
         self.fig = plt.figure(figsize=(16, 7))
         self.fig.suptitle(self.img_datum.filename)
@@ -54,18 +54,24 @@ class ThresholdHistogram:
 
         # connect all event listeners
         self.connect()
+        plt.show(block=True)
 
     def connect(self):
         # begins listening for artist picks, button releases, and motion events
         self.fig.canvas.mpl_connect('pick_event', self.onpick)
         self.fig.canvas.mpl_connect('button_release_event', self.onrelease)
         self.fig.canvas.mpl_connect('motion_notify_event', self.onmove)
+        self.fig.canvas.mpl_connect('close_event', self.onclose)
+
+    def onclose(self, event):
+        plt.close(self.fig)
 
     def onpick(self, event):
         # when an artist is picked (i.e. a threshold line), make it red and change state of object plot to "is pressed"
         self.curr_line = event.artist
         self.curr_line.set_color((1, 0, 0, 1))
         self.is_picked = True
+        self.fig.canvas.draw()
 
     def onrelease(self, event):
         # when the button is released, if curr_line is assigned then turn it back to black, change state back to "is
@@ -75,6 +81,7 @@ class ThresholdHistogram:
 
         self.is_picked = False
         self.curr_line = None
+        self.fig.canvas.draw()
 
     def onmove(self, event):
         # updates image and histogram when an artist is picked and mouse is moving
@@ -97,6 +104,7 @@ class ThresholdHistogram:
             self.update_thresholds()
             self.img_ax.clear()
             self.draw_image()
+            self.fig.canvas.draw()
 
     def update_thresholds(self):
         # update threshold values based on position of threshold lines
@@ -126,36 +134,61 @@ class ThresholdHistogram:
         self.img_hist = self.hist_ax.hist(self.hist_data, bins=256)
 
 
-def ff_correct(img_datum, ff_img_datum):
-    # ff_hist = ThresholdHistogram(ff_img_datum, mode='mask')
-    # img_hist = ThresholdHistogram(img_datum, mode='mask')
+def quantize_img(img_datum, n_grey=256, range_mode='auto', quant_method='uniform'):
+    img = img_datum.img
+    if quant_method == 'uniform':
+        if range_mode == 'manual':
+            th = ThresholdHistogram(img_datum)
+            quant_min = th.thresh_low
+            quant_max = th.thresh_high
+        elif range_mode == 'auto':
+            quant_min = np.percentile(su.filter_outliers(img.flatten()), 0.5)
+            quant_max = np.percentile(su.filter_outliers(img.flatten()), 99.5)
 
-    # ff_mask = ff_hist.mask
-    # img_mask = img_hist.mask
-    # mask = np.logical_or(img_mask, ff_mask)
-    # SHOULD WE ENSURE THAT THE SAME PIXELS ARE MASKED?
-    r, c = ff_img_datum.img.shape
-    ff_1d = np.reshape(ff_img_datum.img, r * c)
-    ff_1d_no_outliers = ff_1d#su.filter_outliers(ff_1d)
-    high_thresh = np.percentile(ff_1d_no_outliers, 99)
-    low_thresh = np.percentile(ff_1d_no_outliers, 1)
-    high_mask = ff_img_datum.img > high_thresh
-    low_mask = ff_img_datum.img < low_thresh
-    # zero_mask = ff_img_datum.img < 5.0
-    ff_mask = np.logical_or(high_mask, low_mask)
-    # ff_mask = np.logical_or(ff_mask, zero_mask)
+        relative_bins = (img - quant_min) / (quant_max - quant_min)
 
-    r, c = img_datum.img.shape
-    img_1d = np.reshape(img_datum.img, r * c)
-    img_1d_no_outliers = img_1d#su.filter_outliers(img_1d)
-    high_thresh = np.percentile(img_1d_no_outliers, 99)
-    low_thresh = np.percentile(img_1d_no_outliers, 1)
-    high_mask = img_datum.img > high_thresh
-    low_mask = img_datum.img < low_thresh
-    img_mask = np.logical_or(high_mask, low_mask)
+        # FIND ALL VALUES THAT ARE LESS THAN THE MIN THRESHOLD
+        nonzero_values = relative_bins >= 0
+        nonzero_values = nonzero_values.astype(np.int)
+        nonzero_img = np.floor(relative_bins * nonzero_values * (n_grey - 2))
+        max_values = nonzero_img >= (n_grey - 2)
+        quantized_img = np.ma.array(nonzero_img, mask=max_values)
+        quantized_img = np.ma.filled(quantized_img, fill_value=n_grey - 1)
 
-    mask = np.logical_or(ff_mask, img_mask)
-    print(mask)
+        return quantized_img.astype(np.int)
+
+
+def ff_correct(img_datum, ff_img_datum, mode='auto'):
+    if mode == 'manual':
+        ff_hist = ThresholdHistogram(ff_img_datum, mode='mask')
+        img_hist = ThresholdHistogram(img_datum, mode='mask')
+
+        ff_mask = ff_hist.mask
+        img_mask = img_hist.mask
+        mask = np.logical_or(img_mask, ff_mask)
+
+    elif mode == 'auto':
+        r, c = ff_img_datum.img.shape
+        ff_1d = np.reshape(ff_img_datum.img, r * c)
+        ff_1d_no_outliers = ff_1d  # su.filter_outliers(ff_1d)
+        high_thresh = np.percentile(ff_1d_no_outliers, 99)
+        low_thresh = np.percentile(ff_1d_no_outliers, 1)
+        high_mask = ff_img_datum.img > high_thresh
+        low_mask = ff_img_datum.img < low_thresh
+        ff_mask = np.logical_or(high_mask, low_mask)
+
+        r, c = img_datum.img.shape
+        img_1d = np.reshape(img_datum.img, r * c)
+        img_1d_no_outliers = img_1d
+        high_thresh = np.percentile(img_1d_no_outliers, 99)
+        low_thresh = np.percentile(img_1d_no_outliers, 0.5)
+        high_mask = img_datum.img > high_thresh
+        low_mask = img_datum.img < low_thresh
+        img_mask = np.logical_or(high_mask, low_mask)
+
+        mask = np.logical_or(ff_mask, img_mask)
+
+    mask = np.logical_or(mask, global_variables.cdte_pix_mask)
     ff_interp = correctBadPixels(ff_img_datum.img, mask)
     img_interp = correctBadPixels(img_datum.img, mask)
     # img_interp = correctBadPixels(img,img_mask)

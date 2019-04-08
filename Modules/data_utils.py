@@ -1,11 +1,13 @@
-import os
-import numpy as np
 import csv
+import os
+
 import cv2 as cv
-from plotting_utils import ImageSlideshow
-import imageproc_utils as ipu
-import matplotlib
+import numpy as np
 from matplotlib import pyplot as plt
+
+import imageproc_utils as ipu
+import plotting_utils as pu
+from texture import texture_analysis as ta
 
 
 class ImgDatum:
@@ -14,6 +16,7 @@ class ImgDatum:
         self.raw_img = img
         self.filename = filename
 
+        self.ff_img = None
         self.ff_filename = None
         self.ff_corr_img = None
         self.ff_corrected = False
@@ -46,13 +49,119 @@ class ImgDatum:
         # replace this with a more robust plotting routine in the future that will allow me
         #  to window the image (like my threshHist class)
 
-    def ff_correct(self, ff_datum):
+    def ff_correct(self, ff_datum, mode = 'manual'):
 
-        self.ff_corr_img = ipu.ff_correct(self.img, ff_datum.img)
+        self.ff_img = ff_datum.img
+        self.ff_corr_img = ipu.ff_correct(self, ff_datum,mode = mode)
         self.ff_filename = ff_datum.filename
         self.ff_corrected = True
 
         self.img = self.ff_corr_img
+
+    def quantize_img(self, range_mode='auto'):
+        self.quant_img = ipu.quantize_img(self, range_mode=range_mode)
+
+
+class DataList:
+    def __init__(self, data):
+        self.data = data
+        self.slides = None
+        self.roi_list = [[img] for img in self.get_img_list()]
+
+    def __getitem__(self, ind):
+        if isinstance(ind, slice):
+            list = self.data[ind.start:ind.stop]
+            new_data = DataList(list)
+            return new_data
+        else:
+            return self.data[ind]
+
+    def __len__(self):
+        return len(self.data)
+
+    def __iter__(self):
+        self.i = 0
+        return self
+
+    def __next__(self):
+        if self.i < len(self):
+            curr_datum = self[self.i]
+            self.i += 1
+            return curr_datum
+        else:
+            raise StopIteration
+
+    def append_datum(self, img_datum, position=None):
+        if position == None:
+            self.data.append(img_datum)
+        else:
+            self.data.insert(img_datum, position)
+
+    def analyze_texture(self):
+        try:
+            self.texture_data = [ta.TextureDatum(rois) for rois in self.roi_list]
+        except TypeError:
+            raise TypeError
+
+    def select_rois(self):
+        self.slides = pu.ImageSlideshow(self)
+        if not all(roi == [] for roi in self.slides.roi_list):
+            self.roi_list = self.slides.roi_list
+
+    def show_quant_imgs(self):
+        # Show all images in a slideshow type format
+        self.slides = pu.ImageSlideshow(self)
+
+    def show_imgs(self, img_type='img'):
+        # Show all images in a slideshow type format
+        self.slides = pu.ImageSlideshow(self,img_type = img_type)
+
+    def get_threshold_list(self):
+        threshold_list = []
+        for spectral_datum in self:
+            threshold_list.append(spectral_datum.threshold)
+        return threshold_list
+
+    def get_img_list(self):  # won't work for frame list
+        imgs = []
+        for datum in self:
+            imgs.append(datum.img)
+        return imgs
+
+    def get_raw_img_list(self):
+        raw_imgs = []
+        for datum in self:
+            raw_imgs.append(datum.raw_img)
+        return raw_imgs
+
+    def get_ff_corr_img_list(self):
+        ff_corr_imgs = []
+        for datum in self:
+            ff_corr_imgs.append(datum.ff_corr_img)
+        return ff_corr_imgs
+
+    def get_filename_list(self):
+        filenames = []
+        for datum in self.data:
+            filenames.append(datum.filename)
+        return filenames
+
+    def ff_corr(self, ff_datalist, img_ff_mapping=None , mode = 'manual'):
+        # img_ff_mapping is a mapping of which data corresponds to which flatfield
+        if img_ff_mapping == None:
+            if len(ff_datalist) == len(self):
+                for i, datum in enumerate(self):
+                    datum.ff_correct(ff_datalist[i],mode = mode)
+            else:
+                raise ValueError(
+                    'Too few or too many flatfields provided. Please provide one for each datum or provide a image-flat-field mapping.')
+        else:
+            for i, datum in enumerate(self):  # i-th data corresponds to img_ff_mapping[i]-th flatfield
+                datum.ff_correct(ff_datalist[img_ff_mapping[i]], mode = mode)
+
+    def quantize_imgs(self,range_mode = 'auto'):
+        self.quant_imgs = [img_datum.quantize_img(range_mode = range_mode) for img_datum in self]
+
 
 class SpectralImgDatum(ImgDatum):  # need to modify ImgDataLoader to make it data type agnostic
     def __init__(self, img, filename, threshold, frame=-1):  # or should frame = -1?
@@ -179,7 +288,7 @@ def open_img(filename):
     file, file_ext = os.path.splitext(filename)
     # add data to img list
 
-    if file_ext in ['.txt', '.csv','.pmf']:
+    if file_ext in ['.txt', '.csv', '.pmf']:
         img = np.loadtxt(filename, delimiter=get_file_delimiter(filename))
 
     elif file_ext == '.img':
@@ -206,7 +315,7 @@ def import_data(directory=os.getcwd(), data_type='integral'):
         # add data to img list
         file_path = directory + '/' + file
 
-        if file_ext in ['.txt', '.csv','.pmf']:
+        if file_ext in ['.txt', '.csv', '.pmf']:
             img = np.loadtxt(file_path, delimiter=get_file_delimiter(file_path))
 
         elif file_ext == '.img':
@@ -252,190 +361,110 @@ def import_data(directory=os.getcwd(), data_type='integral'):
     return datalist
 
 
-class DataList:
-    def __init__(self, data):
-        self.data = data
-
-    def __getitem__(self, ind):
-        return self.data[ind]
-
-    def __len__(self):
-        return len(self.data)
-
-    def __iter__(self):
-        self.i = 0
-        return self
-
-    def __next__(self):
-        if self.i < len(self):
-            curr_datum = self[self.i]
-            self.i += 1
-            return curr_datum
-        else:
-            raise StopIteration
-
-    def insert_datum(self, img_datum, position=None):
-        if position == None:
-            self.data.append(img_datum)
-        else:
-            self.data.insert(img_datum, position)
-
-    def get_axes_creators(self):  # won't work for frame list
-        axes_creators = []
-
-        for img_datum in self:
-            axes_creators.append(img_datum.axes_creator)
-
-        return axes_creators
-
-    def show_imgs(self):
-        # Show all images in a slideshow type format
-        axes_creators = self.get_axes_creators()
-        slideshow = ImageSlideshow(axes_creators)
-        return slideshow
-
-    def get_threshold_list(self):
-        threshold_list = []
-        for spectral_datum in self:
-            threshold_list.append(spectral_datum.threshold)
-        return threshold_list
-
-    def get_img_list(self):  # won't work for frame list
-        imgs = []
-        for datum in self:
-            imgs.append(datum.img)
-        return imgs
-
-    def get_ff_corr_img_list(self):
-        ff_corr_imgs = []
-        for datum in self:
-            ff_corr_imgs.append(datum.ff_corr_img)
-        return ff_corr_imgs
-
-    def get_filename_list(self):
-        filenames = []
-        for datum in self.data:
-            filenames.append(datum.filename)
-        return filenames
-
-    def ff_corr(self, ff_datalist, img_ff_mapping=None):
-        # img_ff_mapping is a mapping of which data corresponds to which flatfield
-        if img_ff_mapping == None:
-            if len(ff_datalist) == len(self):
-                for i, datum in enumerate(self):
-                    datum.ff_correct(ff_datalist[i])
-            else:
-                raise ValueError(
-                    'Too few or too many flatfields provided. Please provide one for each datum or provide a image-flat-field mapping.')
-        else:
-            for i, datum in enumerate(self): # i-th data corresponds to img_ff_mapping[i]-th flatfield
-                datum.ff_correct(ff_datalist[img_ff_mapping[i]])
-
-
-class DataLoader_old:
-    def __init__(self, dir=os.getcwd()):
-        # if the number of images is less than 20 (i.e. small), store as a list of images
-        self.dir = dir
-        self.data = []
-
-        self.import_data()
-
-    def __getitem__(self, ind):
-        return self.data[ind]
-
-    def __str__(self):
-        return 'Directory: ' + str(self.dir) + '\nNumber of Images: ' + str(len(self))
-
-    def __len__(self):
-        return len(self.data)
-
-    def __iter__(self):
-        self.i = 0
-        return self
-
-    def __next__(self):
-        if self.i < len(self):
-            curr_datum = self[self.i]
-            self.i += 1
-            return curr_datum
-        else:
-            raise StopIteration
-
-    # def __add__(self, new_data):
-    #     self.data += new_data
-    #     return
-
-    def create_datum_object(self, img, filename):
-        datum = ImgDatum(img, filename)
-        return datum
-
-    def import_data(self):
-
-        file_list = os.listdir(self.dir)
-
-        for file in file_list:
-            filename, file_ext = os.path.splitext(file)
-            # add data to img list
-            file_path = self.dir + '/' + file
-
-            if file_ext in ['.txt', '.csv']:
-                img = np.loadtxt(file_path, delimiter=self.get_file_delimiter(file_path))
-
-            elif file_ext == '.hdf':
-                print(file + ' is in hdf5 format. File will be skipped.')
-                continue
-
-            elif file_ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tif']:
-                img = cv.imread(file_path, -1)  # returns color images in reverse order (B,G, then R last)
-
-            else:
-                print(file + ' is not in a valid format. File will be skipped.')
-                continue
-
-            datum = self.create_datum_object(img, filename)
-            self.append_datum(datum)
-
-    def get_file_delimiter(self, file):
-        """determine delimiter for csv/txt files"""
-        with open(file, 'r') as data:
-            dialect = csv.Sniffer().sniff(data.read())
-
-        return dialect.delimiter
-
-    def show_imgs(self):
-        # Show all images in a slideshow type format
-        axes_creators = self.get_axes_creators()
-        slideshow = ImageSlideshow(axes_creators)
-        return slideshow
-
-    def append_datum(self, img_datum):
-        self.data.append(img_datum)
-
-    def get_axes_creators(self):
-        axes_creators = []
-
-        for img_datum in self:
-            axes_creators.append(img_datum.axes_creator)
-
-        return axes_creators
-
-    def get_img_list(self):
-        imgs = []
-        for datum in self:
-            imgs.append(datum.img)
-        return imgs
-
-    def get_ff_corr_img_list(self):
-        ff_corr_imgs = []
-        for datum in self:
-            ff_corr_imgs.append(datum.ff_corr_img)
-        return ff_corr_imgs
-
-    def get_filename_list(self):
-        filenames = []
-        for datum in self.data:
-            filenames.append(datum.filename)
-        return filenames
+# class DataLoader_old:
+#     def __init__(self, dir=os.getcwd()):
+#         # if the number of images is less than 20 (i.e. small), store as a list of images
+#         self.dir = dir
+#         self.data = []
+#
+#         self.import_data()
+#
+#     def __getitem__(self, ind):
+#         return self.data[ind]
+#
+#     def __str__(self):
+#         return 'Directory: ' + str(self.dir) + '\nNumber of Images: ' + str(len(self))
+#
+#     def __len__(self):
+#         return len(self.data)
+#
+#     def __iter__(self):
+#         self.i = 0
+#         return self
+#
+#     def __next__(self):
+#         if self.i < len(self):
+#             curr_datum = self[self.i]
+#             self.i += 1
+#             return curr_datum
+#         else:
+#             raise StopIteration
+#
+#     # def __add__(self, new_data):
+#     #     self.data += new_data
+#     #     return
+#
+#     def create_datum_object(self, img, filename):
+#         datum = ImgDatum(img, filename)
+#         return datum
+#
+#     def import_data(self):
+#
+#         file_list = os.listdir(self.dir)
+#
+#         for file in file_list:
+#             filename, file_ext = os.path.splitext(file)
+#             # add data to img list
+#             file_path = self.dir + '/' + file
+#
+#             if file_ext in ['.txt', '.csv']:
+#                 img = np.loadtxt(file_path, delimiter=self.get_file_delimiter(file_path))
+#
+#             elif file_ext == '.hdf':
+#                 print(file + ' is in hdf5 format. File will be skipped.')
+#                 continue
+#
+#             elif file_ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tif']:
+#                 img = cv.imread(file_path, -1)  # returns color images in reverse order (B,G, then R last)
+#
+#             else:
+#                 print(file + ' is not in a valid format. File will be skipped.')
+#                 continue
+#
+#             datum = self.create_datum_object(img, filename)
+#             self.append_datum(datum)
+#
+#     def get_file_delimiter(self, file):
+#         """determine delimiter for csv/txt files"""
+#         with open(file, 'r') as data:
+#             dialect = csv.Sniffer().sniff(data.read())
+#
+#         return dialect.delimiter
+#
+#     def show_imgs(self):
+#         # Show all images in a slideshow type format
+#         axes_creators = self.get_axes_creators()
+#         slideshow = ImageSlideshow(axes_creators)
+#         return slideshow
+#
+#     def append_datum(self, img_datum):
+#         self.data.append(img_datum)
+#
+#     def get_axes_creators(self):
+#         axes_creators = []
+#
+#         for img_datum in self:
+#             axes_creators.append(img_datum.axes_creator)
+#
+#         return axes_creators
+#
+#     def get_img_list(self):
+#         imgs = []
+#         for datum in self:
+#             imgs.append(datum.img)
+#         return imgs
+#
+#     def get_ff_corr_img_list(self):
+#         ff_corr_imgs = []
+#         for datum in self:
+#             ff_corr_imgs.append(datum.ff_corr_img)
+#         return ff_corr_imgs
+#
+#     def get_filename_list(self):
+#         filenames = []
+#         for datum in self.data:
+#             filenames.append(datum.filename)
+#         return filenames
 
 
 #
