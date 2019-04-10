@@ -2,6 +2,7 @@ import matplotlib as mpl
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.interpolate import griddata
+from functools import reduce
 
 import global_variables
 import stat_utils as su
@@ -27,7 +28,8 @@ class ThresholdHistogram:
         self.hist_data = img1d
 
         self.thresh_low, self.thresh_high = (np.percentile(su.filter_outliers(self.hist_data), 0.5),
-                                             np.percentile(su.filter_outliers(self.hist_data), 99.5))
+                                             np.percentile(su.filter_outliers(self.hist_data),
+                                                           99.5))
 
         # make plot interactive
         plt.ioff()
@@ -67,14 +69,16 @@ class ThresholdHistogram:
         plt.close(self.fig)
 
     def onpick(self, event):
-        # when an artist is picked (i.e. a threshold line), make it red and change state of object plot to "is pressed"
+        # when an artist is picked (i.e. a threshold line), make it red and change state of
+        # object plot to "is pressed"
         self.curr_line = event.artist
         self.curr_line.set_color((1, 0, 0, 1))
         self.is_picked = True
         self.fig.canvas.draw()
 
     def onrelease(self, event):
-        # when the button is released, if curr_line is assigned then turn it back to black, change state back to "is
+        # when the button is released, if curr_line is assigned then turn it back to black,
+        # change state back to "is
         # not pressed" and clear curr_line
         if isinstance(self.curr_line, mpl.collections.LineCollection):
             self.curr_line.set_color((0, 0, 0, 1))
@@ -94,7 +98,8 @@ class ThresholdHistogram:
                 seg = self.curr_line.get_segments()
                 seg[0][0][0], seg[0][1][0] = (mouse_x, mouse_x)
                 self.curr_line.set_segments(seg)
-            # sort lines based on x coordinates and assign first line to line_low and second to line_high
+            # sort lines based on x coordinates and assign first line to line_low and second to
+            # line_high
             lines = self.hist_ax.collections
             lines.sort(key=lambda line: line.get_segments()[0][0][0])
             self.line_low = lines[0]
@@ -126,7 +131,8 @@ class ThresholdHistogram:
                                                vmax=self.thresh_high)
         else:
             self.update_mask()
-            self.img_plot = self.img_ax.imshow(self.masked_img, cmap=self.color_map, vmin=self.thresh_low,
+            self.img_plot = self.img_ax.imshow(self.masked_img, cmap=self.color_map,
+                                               vmin=self.thresh_low,
                                                vmax=self.thresh_high)
 
     def draw_hist(self):
@@ -200,7 +206,8 @@ def ff_correct(img_datum, ff_img_datum, mode='auto'):
     return img_ffcorr
 
 
-def correctBadPixels(img, mask):  # runs prior to flatfield correction and interpolates all of the data
+def correctBadPixels(img,
+                     mask):  # runs prior to flatfield correction and interpolates all of the data
     # img_hist = thresholdingHistogram(img,mode = 'mask')
     # img_mask = img_hist.mask
     img_mask = mask
@@ -228,3 +235,28 @@ def select_roi(img, ul_coordinates):
     roi = img[r_start:r_start + v_span, c_start:c_start + h_span]
 
     return roi
+
+
+def lattice_roi_splitter(img, lattice_dims):
+    img_h, img_w = img.shape
+    rois = []
+    n_row = lattice_dims[0]
+    n_col = lattice_dims[1]
+
+    possible_n_row = factors(img_h)
+    possible_n_col = factors(img_w)
+
+    n_row = min(possible_n_row,key=lambda n_r:abs(n_r-n_row))
+    n_col = min(possible_n_col, key=lambda n_c: abs(n_c - n_col))
+
+    roi_h = int(img_h/n_row)
+    roi_w = int(img_w/n_col)
+
+    for r in range(n_row):
+        for c in range(n_col):
+            rois.append(img[r*roi_h:(r+1)*roi_h,c*roi_w:(c+1)*roi_w])
+    return rois
+
+def factors(n):
+    return set(reduce(list.__add__,
+                ([i, n//i] for i in range(1, int(n**0.5) + 1) if n % i == 0)))

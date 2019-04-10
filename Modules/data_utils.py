@@ -1,5 +1,6 @@
 import csv
 import os
+from typing import Any, Union
 
 import cv2 as cv
 import numpy as np
@@ -66,7 +67,7 @@ class DataList:
     def __init__(self, data):
         self.data = data
         self.slides = None
-        self.roi_list = [[img] for img in self.get_img_list()]
+        self.roi_list = []
 
     def __getitem__(self, ind):
         if isinstance(ind, slice):

@@ -6,17 +6,21 @@ import data_utils as du
 from texture import hdf5_utils as hu
 
 
-# def add_datum(datafile,texture_datum): have this function in an "modify_texturedata module/class". That class will be
-# responsible for modifying the datafile (adding stuff, getting rid of stuff, searching for stuff, etc.)
+# def add_datum(datafile,texture_datum): have this function in an "modify_texturedata
+# module/class". That class will be
+# responsible for modifying the datafile (adding stuff, getting rid of stuff, searching for
+# stuff, etc.)
 # is there a way to check if datafile is writable?
 
 
 # need a
 
 def analyze_texture(dir, roi_coord):
-    # NEED TO WORK ON A COUPLE OF FUNCTIONS: CHECK_FOR_HDF5_FILE, INITIALIZE_HDF5_GROUPS, GET_GROUPS_FROM_FILENAME <--
+    # NEED TO WORK ON A COUPLE OF FUNCTIONS: CHECK_FOR_HDF5_FILE, INITIALIZE_HDF5_GROUPS,
+    # GET_GROUPS_FROM_FILENAME <--
     # OUTPUT OF THIS FUNCTION SHOULD BE A DICTIONARY SO YOU CAN DO SOMETHING LIKE:
-    # GET GROUPS, THEN COMPILE IT INTO A FULL GROUP PATH, STORE THIS AS AN ATTRIBUTE OF THE TEXTURE DATUM,
+    # GET GROUPS, THEN COMPILE IT INTO A FULL GROUP PATH, STORE THIS AS AN ATTRIBUTE OF THE
+    # TEXTURE DATUM,
     # THEN ACCESS THAT PATH IN THE HDF5 AND STORE THE TEXTURE DATUM THERE
     f = hu.get_hdf5_file(dir)
     # ---------------------------------
@@ -27,7 +31,8 @@ def analyze_texture(dir, roi_coord):
 
         texture_datum = TextureDatum(img, roi_coord, filename=filename)
         try:
-            dset = f[texture_datum.base_group_path].create_dataset("data", (1, 1), dtype='O', maxshape=(None, 1))
+            dset = f[texture_datum.base_group_path].create_dataset("data", (1, 1), dtype='O',
+                                                                   maxshape=(None, 1))
             # NEED TO THINK ABOUT THIS MORE. HOW CAN I STORE THIS OBJECT WELL...
         except RuntimeError:
             # APPEND THE DATA TO THE DSET
@@ -37,27 +42,45 @@ def analyze_texture(dir, roi_coord):
 
 
 class TextureDatum:
-    def __init__(self, rois, img=None, roi_coord=None, filename=None, n_grey=256, quant_method='uniform'):
+    def __init__(self, rois, img=None, roi_coord=None, filename=None, n_grey=256,
+                 quant_method='uniform'):
         # initialize variables
         self.img = img
         self.n_grey = n_grey
         self.quant_method = quant_method
         self.filename = filename
         self.rois = rois
-        self.parameter_groups = None  # IMPLEMENT A FUNCTION TO GET THE PARAMETER GROUPS FROM THE FILENAME
-        self.base_group_path = None  # IMPLEMENT A FUNCTION TO GET THE CORRECT GROUP PATH FOR THE DATA FROM THE PARAMETER
+        self.parameter_groups = None  # IMPLEMENT A FUNCTION TO GET THE PARAMETER GROUPS FROM THE
+        # FILENAME
+        self.base_group_path = None  # IMPLEMENT A FUNCTION TO GET THE CORRECT GROUP PATH FOR THE
+        # DATA FROM THE PARAMETER
         # GROUPS
 
         # quantize the rois
-        self.quant_rois = [
-            ipu.quantize_img(roi, quantization_range=[np.percentile(roi, 1), np.percentile(roi, 99)],
-                              n_grey=self.n_grey, method=self.quant_method) for roi in self.rois]
+        # self.quant_rois = [
+        #     ipu.quantize_img(roi, quantization_range=[np.percentile(roi, 1), np.percentile(roi,
+        #     99)],
+        #                       n_grey=self.n_grey, method=self.quant_method) for roi in self.rois]
         # compute texture matrices and features for each roi
-        self.glcms = [GLCM(roi, self.n_grey, d=1, angle=45) for roi in self.quant_rois]
-        self.ngtdms = [NGTDM(roi, n_grey=256, d=1) for roi in self.quant_rois]
+
+        self.glcms = [GLCM(roi, self.n_grey, d=1, angle=45) for roi in self.rois]
+        self.ngtdms = [NGTDM(roi, n_grey=256, d=1) for roi in self.rois]
+        self.compute_feature_histogram()
         # self.rlm = RLM(self.img, angle = 45)
 
+    def compute_feature_histogram(self):
+        feature_list = {'entropy': [], 'energy': [], 'inverse difference moment':
+            [], 'correlation': [], 'busyness': [], 'complexity': [],'coarseness': [], 'contrast': []}
+        for i in range(len(self.rois)):
+            glcm_feats = self.glcms[i].features
+            ngtdm_feats = self.ngtdms[i].features
 
+            for feature in glcm_feats.keys():
+                feature_list[feature].append(glcm_feats[feature])
+            for feature in ngtdm_feats.keys():
+                feature_list[feature].append(ngtdm_feats[feature])
+
+        self.feature_list = feature_list
 
 class GLCM:
     def __init__(self, img, n_grey, d, angle):
@@ -75,9 +98,11 @@ class GLCM:
         i_array = np.linspace(0, self.n_grey - 1, num=self.n_grey)
         j_array = i_array
 
-        # calculate normalized probabilities, means, and standard deviations for focus and comparison pixel gray levels
+        # calculate normalized probabilities, means, and standard deviations for focus and
+        # comparison pixel gray levels
         self.p_x = np.sum(self.glcm, axis=1)  # PROBABILITY OF GREY LEVEL I BEING FOCUS PIXEL
-        self.p_y = np.sum(self.glcm, axis=0)  # PROBABILITY OF GREY LEVEL J BEING THE COMPARISON PIXEL
+        self.p_y = np.sum(self.glcm,
+                          axis=0)  # PROBABILITY OF GREY LEVEL J BEING THE COMPARISON PIXEL
         self.mean_i = np.sum(i_array * self.p_x)  # MEAN FOCUS PIXEL GREY LEVEL
         self.mean_j = np.sum(j_array * self.p_y)  # MEAN COMPARISON PIXEL GREY LEVEL
         self.std_i = np.sqrt(np.sum(
@@ -87,15 +112,17 @@ class GLCM:
             (j_array - self.mean_j) ** 2 * self.p_y)
         )  # STANDARD DEVIATION OF COMPARISON PIXEL GREY LEVEL PROBABILITY DISTRIBUTION
         # compute all GLCM features
-        self.features = {'entropy': self.entropy(), 'energy': self.energy(), 'inverse difference moment':
-            self.inverse_difference_moment(), 'correlation': self.correlation()}
+        self.features = {'entropy': self.entropy(), 'energy': self.energy(),
+                         'inverse difference moment':
+                             self.inverse_difference_moment(), 'correlation': self.correlation()}
 
     def get_glcm(self, img, n_grey, d, angle):
         # INITIALIZE GLCM AND GET COMPARISON VECTOR
         glcm = np.zeros((n_grey, n_grey))
         n_row, n_col = img.shape
         [dr, dc] = self.find_comparison_vector(d, angle)
-        # DECIDE WHETHER TO START AWAY FROM LEFT EDGE OR END BEFORE RIGHT EDGE (COMPARISON VECTOR CAN'T GO OUTSIDE IMG)
+        # DECIDE WHETHER TO START AWAY FROM LEFT EDGE OR END BEFORE RIGHT EDGE (COMPARISON VECTOR
+        # CAN'T GO OUTSIDE IMG)
         # UNLESS DR IS 0, ALWAYS NEED TO START DOWN IN THE Y DIRECTION
 
         if np.sign(dc) == -1:
@@ -117,11 +144,14 @@ class GLCM:
         return glcm / np.sum(glcm)
 
     def find_comparison_vector(self, d, angle):
-        # find the vector pointing from the focus pixel to the comparison pixel for calculating the GLCM
+        # find the vector pointing from the focus pixel to the comparison pixel for calculating
+        # the GLCM
         # Angle should be in set [0,180)
         tan = np.tan(angle * self.DEG2RAD)
-        # One component of the vector must be +/- d and the other component must be smaller or equal in magnitude
-        # than d. We can figure out which component is d by looking at tan(ø) and then deduce the other component
+        # One component of the vector must be +/- d and the other component must be smaller or
+        # equal in magnitude
+        # than d. We can figure out which component is d by looking at tan(ø) and then deduce the
+        # other component
         if tan == 0:
             dc = d
             dr = 0
@@ -190,9 +220,10 @@ class NGTDM:
         self.ngtdm = np.zeros(self.n_grey)
         self.get_ngtdm()
         self.p_i = self.get_probability_vector()
-        self.features = {'busyness': self.busyness(), 'complexity': self.complexity(), 'coarseness': self.coarseness(
+        self.features = {'busyness': self.busyness(), 'complexity': self.complexity(),
+                         'coarseness': self.coarseness(
 
-        ), 'contrast': self.contrast()}
+                         ), 'contrast': self.contrast()}
 
     def get_probability_vector(self):
         p_i = np.zeros(self.n_grey)

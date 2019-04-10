@@ -210,7 +210,6 @@ class ImageSlideshow:
                                                 rectprops=dict(facecolor='#ff4d4d', edgecolor='black', alpha=0.3,
                                                                fill=True),
                                                 interactive=True)
-
             self.fig.canvas.draw()
         else:
             self.selector_button.color = '0.85'
